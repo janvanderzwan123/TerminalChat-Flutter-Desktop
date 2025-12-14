@@ -2,47 +2,71 @@ import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
-  static const String baseUrl = "http://127.0.0.1:8000";
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    baseUrl: "http://127.0.0.1:8000",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  ));
+
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
-  ApiService() {
-    _dio.options.baseUrl = baseUrl;
-    _dio.options.headers = {"Content-Type": "application/json"};
-  }
-
   Future<Response> login(String username, String password) async {
-    final response = await _dio.post(
-      "/login",
-      data: {"username": username, "password": password},
-    );
+    final formData = "username=$username&password=$password&grant_type=password";
 
-    if (response.statusCode == 200) {
-      final token = response.data["access_token"];
-      if (token != null) {
-        await _storage.write(key: "access_token", value: token);
-      }
-    }
-    return response;
-  }
-
-  Future<Response> createUser(String name, String username, String email, String password) async {
     return await _dio.post(
-      "/users/",
-      data: {
-        "name": name,
-        "username": username,
-        "email": email,
-        "password": password,
-      },
+      "/login",
+      data: formData,
+      options: Options(
+        contentType: Headers.formUrlEncodedContentType,
+      ),
     );
   }
 
-  Future<Response> getUser(int id) async {
-    final token = await _storage.read(key: "access_token");
-    return await _dio.get(
-      "/users/$id",
-      options: Options(headers: {"Authorization": "Bearer $token"}),
-    );
+  Future<void> logout() async {
+    await _storage.delete(key: "access_token");
+  }
+
+
+  Future<String?> getToken() async {
+    return await _storage.read(key: "access_token");
+  }
+
+  Future<Response?> getUser(int userId) async {
+    final token = await getToken();
+    if (token == null) return null;
+
+    try {
+      final response = await _dio.get(
+        "/users/$userId",
+        options: Options(
+          headers: {"Authorization": "Bearer $token"},
+        ),
+      );
+      return response;
+    } on DioError catch (e) {
+      print("Get user error: ${e.response?.data ?? e.message}");
+      return null;
+    }
+  }
+
+  /// Example: Create a new user
+  Future<Response?> createUser(Map<String, dynamic> userData) async {
+    final token = await getToken();
+    if (token == null) return null;
+
+    try {
+      final response = await _dio.post(
+        "/users/",
+        data: userData,
+        options: Options(
+          headers: {"Authorization": "Bearer $token"},
+        ),
+      );
+      return response;
+    } on DioError catch (e) {
+      print("Create user error: ${e.response?.data ?? e.message}");
+      return null;
+    }
   }
 }
